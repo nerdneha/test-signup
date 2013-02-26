@@ -18,6 +18,10 @@
       </td>
       <td> {{pw_error}} </td>
     </tr>
+    <tr>
+      <td>What food do you like?: </td>
+      <td><input type="text" size="50" maxlength="50" name="food"> </td>
+    </tr>
   </table>
   <input type="submit" name="submit" value="save">
 </form>
