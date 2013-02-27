@@ -14,7 +14,7 @@ else:
   connection = pymongo.Connection('localhost', safe=True)
   db = connection.site
 
-def check_signup(username, password, pwconf):
+def check_if_pws_match(password, pwconf):
   if password != pwconf:
     return "Your passwords do not match"
 
@@ -35,7 +35,7 @@ def add_user(username, password, food):
     users = db.users
     users.insert({"_id": username, "password": hashed_pw, "food": food})
   except pymongo.errors.DuplicateKeyError as e:
-    return "Couldn't add you to the database, username %s exists, if that's you, log in?" % (username)
+    return "Username %s is already used, if that's you:" % (username)
   except:
     return "Pymongo error, retry"
 
@@ -50,16 +50,16 @@ def start_session(username):
   return str(session['_id'])
 
 KEYWORD = "HASH ME"
-def hash_str(string_to_hash):
+def hash_string(string_to_hash):
   return hmac.new(KEYWORD, string_to_hash).hexdigest()
 
-def make_cookie(session_id):
+def get_cookie(session_id):
   #hashes the session_id as the cookie
-  return "%s|%s" % (session_id, hash_str(session_id))
+  return "%s|%s" % (session_id, hash_string(session_id))
 
 def get_session_from_cookie(cookie):
   session_id = cookie.split("|")[0]
-  if (make_cookie(session_id) == cookie):
+  if (get_cookie(session_id) == cookie):
     return session_id
 
 def get_session_from_db(session_id):
@@ -78,3 +78,17 @@ def get_user_info(username):
   except:
     print "Couldn't retrieve your username from the db"
   return user_info
+
+def username_matches_password(user_info, password):
+  pw = user_info['password']
+  past_salt = pw.split(",")[1]
+  return hash_pw(password, past_salt) == pw
+
+def end_session(session_id):
+  sessions = db.sessions
+  try:
+    object_id = bson.objectid.ObjectId(session_id)
+    sessions.remove({'_id': object_id})
+  except:
+    print "unable to remove session"
+  return

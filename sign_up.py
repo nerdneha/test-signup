@@ -13,8 +13,8 @@ if MONGO_URL:
 else:
   #USE IF USING MONGODB
   connection = pymongo.Connection('localhost', safe=True)
-  db = connection.site #replace "database"
-users = db.users #replace "collection"
+  db = connection.site
+users = db.users
 
 @bottle.route('/')
 def default_go_to_signup():
@@ -23,32 +23,33 @@ def default_go_to_signup():
 
 @bottle.route('/signup', method='GET')
 def get_user_and_pw():
-  return bottle.template('signup', dict(pw_error="", user_error=""))
+  return bottle.template('signup', dict(pw_error = "", user_error = ""))
 
 @bottle.route('/signup', method='POST')
 def store_user_and_pw():
   username = bottle.request.forms.get('username')
   password = bottle.request.forms.get('password')
   pwconf = bottle.request.forms.get('passwordconf')
-  food = bottle.request.forms.get('food')
+  food = bottle.request.forms.get('food') #took this variable for fun
 
-  pw_check = manage_users.check_signup(username, password, pwconf)
+  pw_error_check = manage_users.check_if_pws_match(password, pwconf)
 
-  if pw_check == None:
-    user_check = manage_users.add_user(username, password, food)
-    if user_check == None:
-      entry = db.users.find_one({"_id": username})
+  if pw_error_check == None:
+    user_error_check = manage_users.add_user(username, password, food)
+    if user_error_check == None:
+      entry = users.find_one({"_id": username})
       hashed_pw = entry["password"]
       #Houston we are a go, the pws match and the user is not in the system
       #THIS IS WHERE THE MAGIC HAPPENS
       session_id = manage_users.start_session(username)
-      cookie = manage_users.make_cookie(session_id)
+      cookie = manage_users.get_cookie(session_id)
       bottle.response.set_cookie("session", cookie)
       bottle.redirect('/welcome')
     else:
-      return bottle.template('signup', dict(pw_error="", user_error=user_check))
+      return bottle.template('signup', dict(pw_error = "", user_error =
+                                            user_error_check))
   else:
-    return bottle.template('signup', dict(pw_error=pw_check, user_error = ""))
+    return bottle.template('signup', dict(pw_error = pw_error_check, user_error = ""))
 
 def get_session():
   cookie = bottle.request.get_cookie("session")
@@ -59,9 +60,34 @@ def get_session():
     session_id = manage_users.get_session_from_cookie(cookie)
     if (session_id == None):
       print "Sorry, your cookie didn't generate properly"
+      return None
     else:
       session = manage_users.get_session_from_db(session_id)
   return session
+
+@bottle.route('/login', method='GET')
+def get_login_info():
+  return bottle.template('login', dict(user_error="", pw_error=""))
+
+@bottle.route('/login', method='POST')
+def log_user_in():
+  username = bottle.request.forms.get('username')
+  password = bottle.request.forms.get('password')
+
+  user_info = manage_users.get_user_info(username)
+  if user_info != None:
+    if manage_users.username_matches_password(user_info, password):
+      #houston we are a go, start a new session
+      session_id = manage_users.start_session(username)
+      cookie = manage_users.get_cookie(session_id)
+      bottle.response.set_cookie("session", cookie)
+      bottle.redirect('/welcome')
+    else:
+      error_message = "Your username didn't match your pw, retry?"
+      return bottle.template('login', dict(user_error = "", pw_error = error_message))
+  else:
+    error_message = "Your username doesn't exist:"
+    return bottle.template('login', dict(user_error = error_message, pw_error = ""))
 
 @bottle.route('/welcome', method='GET')
 def say_hello_to_my_friend():
@@ -69,7 +95,17 @@ def say_hello_to_my_friend():
   username = session['username']
   user_info = manage_users.get_user_info(username)
   food = user_info['food']
-  return "oh hai %s, you like %s" % (username, food)
+  return bottle.template('welcome', dict(username = username, food = food))
+
+@bottle.route('/logout', method='GET')
+def logout_user():
+  session = get_session()
+  if session == None:
+    bottle.redirect('/login', dict(user_error = "", pw_error = ""))
+  else:
+    manage_users.end_session(session['_id'])
+    bottle.response.set_cookie("session", "")
+    bottle.redirect('/login')
 
 if os.environ.get('ENVIRONMENT') == 'PRODUCTION':
   port = int(os.environ.get('PORT', 5000))
